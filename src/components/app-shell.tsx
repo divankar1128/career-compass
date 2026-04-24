@@ -1,4 +1,4 @@
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -12,6 +12,7 @@ import {
   X,
   Search,
   Bell,
+  LogOut,
 } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -19,6 +20,8 @@ import { ThemeToggle } from "./theme-toggle";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
+import { toast } from "sonner";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -33,6 +36,21 @@ const nav = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const initials = (user?.name ?? "AK")
+    .split(" ")
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  const onLogout = async () => {
+    await logout();
+    toast.success("Signed out");
+    navigate({ to: "/login" });
+  };
 
   return (
     <div className="min-h-screen w-full bg-background text-foreground">
@@ -81,13 +99,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <ThemeToggle />
               <div className="ml-2 flex items-center gap-3 rounded-full border border-border bg-card px-3 py-1.5">
                 <div className="grid h-7 w-7 place-items-center rounded-full gradient-primary text-xs font-semibold text-primary-foreground">
-                  AK
+                  {initials}
                 </div>
                 <div className="hidden text-sm xl:block">
-                  <div className="font-medium leading-none">Alex Kim</div>
-                  <div className="text-xs text-muted-foreground">Pro plan</div>
+                  <div className="font-medium leading-none">{user?.name ?? "Guest"}</div>
+                  <div className="text-xs text-muted-foreground capitalize">
+                    {user?.plan ?? user?.role ?? "Free"} plan
+                  </div>
                 </div>
               </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full"
+                onClick={onLogout}
+                aria-label="Sign out"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
             </div>
           </header>
           <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</div>
