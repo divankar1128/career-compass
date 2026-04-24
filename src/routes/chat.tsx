@@ -30,29 +30,44 @@ function ChatPage() {
   const [messages, setMessages] = useState<Message[]>(initialChatMessages);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
+  const [conversationId] = useState<string | undefined>(undefined);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
-  const send = (text?: string) => {
+  const send = async (text?: string) => {
     const content = (text ?? input).trim();
-    if (!content) return;
+    if (!content || typing) return;
     const userMsg: Message = { id: Date.now().toString(), role: "user", content, time: "Now" };
-    setMessages((prev) => [...prev, userMsg]);
+    const replyId = (Date.now() + 1).toString();
+    setMessages((prev) => [...prev, userMsg, { id: replyId, role: "assistant", content: "", time: "Now" }]);
     setInput("");
     setTyping(true);
-    setTimeout(() => {
-      const reply: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: aiReplies[Math.floor(Math.random() * aiReplies.length)],
-        time: "Now",
-      };
-      setMessages((prev) => [...prev, reply]);
+
+    try {
+      let acc = "";
+      for await (const chunk of chatApi.stream(content, conversationId)) {
+        acc += chunk;
+        setMessages((prev) =>
+          prev.map((m) => (m.id === replyId ? { ...m, content: acc } : m)),
+        );
+      }
+      if (!acc) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === replyId ? { ...m, content: "(no response)" } : m,
+          ),
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Chat failed";
+      toast.error(msg);
+      setMessages((prev) => prev.filter((m) => m.id !== replyId));
+    } finally {
       setTyping(false);
-    }, 1300);
+    }
   };
 
   return (
