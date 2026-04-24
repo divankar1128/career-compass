@@ -30,25 +30,37 @@ function ChatPage() {
   const [messages, setMessages] = useState<Message[]>(initialChatMessages);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
-  const [conversationId] = useState<string | undefined>(undefined);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
+  const ensureConversation = async (): Promise<string> => {
+    if (conversationId) return conversationId;
+    const { conversation } = await chatApi.createConversation();
+    setConversationId(conversation._id);
+    return conversation._id;
+  };
+
   const send = async (text?: string) => {
     const content = (text ?? input).trim();
     if (!content || typing) return;
     const userMsg: Message = { id: Date.now().toString(), role: "user", content, time: "Now" };
     const replyId = (Date.now() + 1).toString();
-    setMessages((prev) => [...prev, userMsg, { id: replyId, role: "assistant", content: "", time: "Now" }]);
+    setMessages((prev) => [
+      ...prev,
+      userMsg,
+      { id: replyId, role: "assistant", content: "", time: "Now" },
+    ]);
     setInput("");
     setTyping(true);
 
     try {
+      const id = await ensureConversation();
       let acc = "";
-      for await (const chunk of chatApi.stream(content, conversationId)) {
+      for await (const chunk of chatApi.streamMessage(id, content)) {
         acc += chunk;
         setMessages((prev) =>
           prev.map((m) => (m.id === replyId ? { ...m, content: acc } : m)),
@@ -56,9 +68,7 @@ function ChatPage() {
       }
       if (!acc) {
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === replyId ? { ...m, content: "(no response)" } : m,
-          ),
+          prev.map((m) => (m.id === replyId ? { ...m, content: "(no response)" } : m)),
         );
       }
     } catch (err) {
@@ -109,12 +119,10 @@ function ChatPage() {
                 <div
                   className={cn(
                     "max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-soft",
-                    m.role === "user"
-                      ? "gradient-primary text-primary-foreground"
-                      : "glass",
+                    m.role === "user" ? "gradient-primary text-primary-foreground" : "glass",
                   )}
                 >
-                  <p className="whitespace-pre-wrap">{m.content}</p>
+                  <p className="whitespace-pre-wrap">{m.content || "…"}</p>
                   <p className={cn("mt-1 text-[10px] opacity-60")}>{m.time}</p>
                 </div>
               </motion.div>
@@ -178,6 +186,7 @@ function ChatPage() {
           <Button
             type="submit"
             size="icon"
+            disabled={typing}
             className="rounded-full gradient-primary text-primary-foreground shadow-glow"
           >
             <Send className="h-4 w-4" />
