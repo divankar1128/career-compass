@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth-context";
+import { ApiError } from "@/lib/api";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -19,15 +21,24 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState("alex@ascend.app");
+  const [password, setPassword] = useState("");
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      toast.success("Welcome back, Alex!");
-      navigate({ to: "/dashboard" });
-    }, 900);
+    try {
+      const user = await login(email, password);
+      toast.success(`Welcome back, ${user.name.split(" ")[0]}!`);
+      navigate({ to: user.onboarded ? "/dashboard" : "/onboarding" });
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Could not log in";
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -55,14 +66,30 @@ function LoginPage() {
                 <Label htmlFor="email">Email</Label>
                 <div className="relative">
                   <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input id="email" type="email" placeholder="alex@ascend.app" defaultValue="alex@ascend.app" className="pl-9" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="alex@ascend.app"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="pl-9"
+                  />
                 </div>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="password">Password</Label>
                 <div className="relative">
                   <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input id="password" type="password" defaultValue="••••••••" className="pl-9" />
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={8}
+                    className="pl-9"
+                  />
                 </div>
               </div>
               <Button

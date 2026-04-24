@@ -2,6 +2,7 @@ import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/r
 import appCss from "../styles.css?url";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { AuthProvider } from "@/lib/auth-context";
 
 function NotFoundComponent() {
   return (
@@ -82,8 +83,10 @@ function RootShell({ children }: { children: React.ReactNode }) {
 function RootComponent() {
   return (
     <ThemeProvider>
-      <Outlet />
-      <Toaster position="top-right" richColors />
+      <AuthProvider>
+        <Outlet />
+        <Toaster position="top-right" richColors />
+      </AuthProvider>
     </ThemeProvider>
   );
 }
