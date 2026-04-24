@@ -39,9 +39,11 @@ import {
   roadmapApi,
   interviewApi,
   jobsApi,
+  usersApi,
   type Roadmap,
   type Resume,
   type InterviewAnswer,
+  type FullUser,
 } from "@/lib/api";
 
 export const Route = createFileRoute("/dashboard")({
@@ -58,6 +60,7 @@ const iconMap = { trophy: Trophy, brain: Brain, mic: Mic, briefcase: Briefcase }
 
 function Dashboard() {
   const { user } = useAuth();
+  const [fullUser, setFullUser] = useState<FullUser | null>(null);
   const [roadmap, setRoadmap] = useState<Roadmap | null>(null);
   const [resume, setResume] = useState<Resume | null>(null);
   const [answers, setAnswers] = useState<InterviewAnswer[]>([]);
@@ -68,16 +71,18 @@ function Dashboard() {
     let cancelled = false;
     (async () => {
       const results = await Promise.allSettled([
+        usersApi.me(),
         roadmapApi.get(),
         resumeApi.list(),
         interviewApi.answers(),
         jobsApi.recommended(),
       ]);
       if (cancelled) return;
-      if (results[0].status === "fulfilled") setRoadmap(results[0].value.roadmap);
-      if (results[1].status === "fulfilled") setResume(results[1].value.items[0] ?? null);
-      if (results[2].status === "fulfilled") setAnswers(results[2].value.items);
-      if (results[3].status === "fulfilled") setJobsCount(results[3].value.items.length);
+      if (results[0].status === "fulfilled") setFullUser(results[0].value.user);
+      if (results[1].status === "fulfilled") setRoadmap(results[1].value.roadmap);
+      if (results[2].status === "fulfilled") setResume(results[2].value.items[0] ?? null);
+      if (results[3].status === "fulfilled") setAnswers(results[3].value.items);
+      if (results[4].status === "fulfilled") setJobsCount(results[4].value.items.length);
       setLoading(false);
     })();
     return () => {
@@ -85,18 +90,20 @@ function Dashboard() {
     };
   }, []);
 
+  const skillCount = fullUser?.profile?.skills?.length ?? 0;
+
   const careerScore = useMemo(() => {
     const resumeWeight = resume?.score ?? 0;
     const roadmapWeight = (roadmap?.progress ?? 0) * 100;
-    const skillCount = (user?.profile?.skills?.length ?? 0) * 4;
+    const skillsWeight = skillCount * 4;
     const interviewWeight = answers.length
       ? (answers.reduce((s, a) => s + (a.score ?? 0), 0) / answers.length) * 10
       : 0;
     const score = Math.round(
-      0.35 * resumeWeight + 0.25 * roadmapWeight + 0.2 * Math.min(100, skillCount) + 0.2 * interviewWeight,
+      0.35 * resumeWeight + 0.25 * roadmapWeight + 0.2 * Math.min(100, skillsWeight) + 0.2 * interviewWeight,
     );
     return Math.min(100, Math.max(0, score));
-  }, [resume, roadmap, user, answers]);
+  }, [resume, roadmap, skillCount, answers]);
 
   const careerStats = [
     {
@@ -108,7 +115,7 @@ function Dashboard() {
     },
     {
       label: "Skills Mastered",
-      value: user?.profile?.skills?.length ?? 0,
+      value: skillCount,
       change: "+3",
       icon: "brain" as const,
       suffix: "",
