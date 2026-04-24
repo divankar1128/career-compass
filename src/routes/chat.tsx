@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { initialChatMessages } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { chatApi, ApiError } from "@/lib/api";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/chat")({
   head: () => ({
@@ -20,12 +22,6 @@ const suggestions = [
   "Negotiate my $190k offer",
   "How do I get to staff in 18 months?",
   "Roast my resume",
-];
-
-const aiReplies = [
-  "Great question. Let me break this into 3 concrete moves you can ship this week...",
-  "Based on your goals and current trajectory, here's what I'd prioritize:\n\n1. Lock in your story bank\n2. Schedule 2 mocks with senior ICs\n3. Send your current draft to Maya for a 24h turnaround.",
-  "I love this energy. Here's the playbook top performers use — and the trap most people fall into.",
 ];
 
 type Message = { id: string; role: "user" | "assistant"; content: string; time: string };
