@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
   Trophy,
@@ -10,6 +10,7 @@ import {
   ArrowUpRight,
   Calendar,
   CheckCircle2,
+  Loader2,
 } from "lucide-react";
 import {
   Area,
@@ -26,15 +27,29 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { GlassCard } from "@/components/glass-card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { activityData, careerStats, progressData, skillData } from "@/lib/mock-data";
+import { activityData, progressData, skillData } from "@/lib/mock-data";
+import { useAuth } from "@/lib/auth-context";
+import {
+  resumeApi,
+  roadmapApi,
+  interviewApi,
+  jobsApi,
+  type Roadmap,
+  type Resume,
+  type InterviewAnswer,
+} from "@/lib/api";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
-    meta: [{ title: "Dashboard — Ascend" }, { name: "description", content: "Your career command center." }],
+    meta: [
+      { title: "Dashboard — Ascend" },
+      { name: "description", content: "Your career command center." },
+    ],
   }),
   component: Dashboard,
 });
@@ -42,6 +57,92 @@ export const Route = createFileRoute("/dashboard")({
 const iconMap = { trophy: Trophy, brain: Brain, mic: Mic, briefcase: Briefcase };
 
 function Dashboard() {
+  const { user } = useAuth();
+  const [roadmap, setRoadmap] = useState<Roadmap | null>(null);
+  const [resume, setResume] = useState<Resume | null>(null);
+  const [answers, setAnswers] = useState<InterviewAnswer[]>([]);
+  const [jobsCount, setJobsCount] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.allSettled([
+        roadmapApi.get(),
+        resumeApi.list(),
+        interviewApi.answers(),
+        jobsApi.recommended(),
+      ]);
+      if (cancelled) return;
+      if (results[0].status === "fulfilled") setRoadmap(results[0].value.roadmap);
+      if (results[1].status === "fulfilled") setResume(results[1].value.items[0] ?? null);
+      if (results[2].status === "fulfilled") setAnswers(results[2].value.items);
+      if (results[3].status === "fulfilled") setJobsCount(results[3].value.items.length);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const careerScore = useMemo(() => {
+    const resumeWeight = resume?.score ?? 0;
+    const roadmapWeight = (roadmap?.progress ?? 0) * 100;
+    const skillCount = (user?.profile?.skills?.length ?? 0) * 4;
+    const interviewWeight = answers.length
+      ? (answers.reduce((s, a) => s + (a.score ?? 0), 0) / answers.length) * 10
+      : 0;
+    const score = Math.round(
+      0.35 * resumeWeight + 0.25 * roadmapWeight + 0.2 * Math.min(100, skillCount) + 0.2 * interviewWeight,
+    );
+    return Math.min(100, Math.max(0, score));
+  }, [resume, roadmap, user, answers]);
+
+  const careerStats = [
+    {
+      label: "Career Score",
+      value: careerScore,
+      change: "+12",
+      icon: "trophy" as const,
+      suffix: "%",
+    },
+    {
+      label: "Skills Mastered",
+      value: user?.profile?.skills?.length ?? 0,
+      change: "+3",
+      icon: "brain" as const,
+      suffix: "",
+    },
+    {
+      label: "Interview Ready",
+      value: answers.length
+        ? Math.round((answers.reduce((s, a) => s + (a.score ?? 0), 0) / answers.length) * 10)
+        : 0,
+      change: "+8%",
+      icon: "mic" as const,
+      suffix: "%",
+    },
+    {
+      label: "Job Matches",
+      value: jobsCount,
+      change: "+4",
+      icon: "briefcase" as const,
+      suffix: "",
+    },
+  ];
+
+  const upcomingItems =
+    roadmap?.items
+      ?.filter((i) => !i.done)
+      .slice(0, 4)
+      .map((i) => ({
+        title: i.title,
+        progress: i.done ? 100 : 0,
+        time: `Week ${i.week}`,
+      })) ?? [];
+
+  const firstName = user?.name?.split(" ")[0] ?? "there";
+
   return (
     <AppShell>
       <motion.div
@@ -50,20 +151,28 @@ function Dashboard() {
         className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"
       >
         <div>
-          <p className="text-sm text-muted-foreground">Good morning, Alex ☀️</p>
+          <p className="text-sm text-muted-foreground">Good morning, {firstName} ☀️</p>
           <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
-            You're <span className="gradient-text">87%</span> career-ready.
+            You're <span className="gradient-text">{careerScore}%</span> career-ready.
           </h1>
         </div>
-        <Button className="rounded-full gradient-primary text-primary-foreground shadow-glow">
-          <Sparkles className="mr-2 h-4 w-4" /> Ask your coach
+        <Button asChild className="rounded-full gradient-primary text-primary-foreground shadow-glow">
+          <Link to="/chat">
+            <Sparkles className="mr-2 h-4 w-4" /> Ask your coach
+          </Link>
         </Button>
       </motion.div>
+
+      {loading && (
+        <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin" /> Syncing your data...
+        </div>
+      )}
 
       {/* Stat cards */}
       <div className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
         {careerStats.map((s, i) => {
-          const Icon = iconMap[s.icon as keyof typeof iconMap];
+          const Icon = iconMap[s.icon];
           return (
             <GlassCard key={s.label} delay={i * 0.06} className="p-5">
               <div className="flex items-start justify-between">
@@ -74,7 +183,10 @@ function Dashboard() {
                   <TrendingUp className="h-3 w-3" /> {s.change}
                 </span>
               </div>
-              <div className="mt-4 text-3xl font-bold font-display">{s.value}{s.label.includes("Ready") ? "%" : ""}</div>
+              <div className="mt-4 text-3xl font-bold font-display">
+                {s.value}
+                {s.suffix}
+              </div>
               <div className="text-xs text-muted-foreground">{s.label}</div>
             </GlassCard>
           );
@@ -144,7 +256,12 @@ function Dashboard() {
                 <XAxis dataKey="day" stroke="currentColor" fontSize={11} tickLine={false} axisLine={false} />
                 <YAxis stroke="currentColor" fontSize={11} tickLine={false} axisLine={false} />
                 <Tooltip
-                  contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }}
+                  contentStyle={{
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 12,
+                    fontSize: 12,
+                  }}
                 />
                 <Bar dataKey="lessons" fill="oklch(0.72 0.2 295)" radius={[6, 6, 0, 0]} />
                 <Bar dataKey="mocks" fill="oklch(0.7 0.18 200)" radius={[6, 6, 0, 0]} />
@@ -157,36 +274,42 @@ function Dashboard() {
           <div className="flex items-center justify-between">
             <h3 className="font-display text-lg font-semibold">Today's focus</h3>
             <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-              <Calendar className="mr-1 inline h-3 w-3" /> April 23
+              <Calendar className="mr-1 inline h-3 w-3" />
+              {new Date().toLocaleDateString(undefined, { month: "long", day: "numeric" })}
             </span>
           </div>
-          <ul className="mt-4 space-y-3">
-            {[
-              { title: "Finish system design module 4", progress: 80, time: "25 min" },
-              { title: "Mock interview: Linear (frontend)", progress: 0, time: "45 min" },
-              { title: "Reply to 3 recruiter intros", progress: 33, time: "10 min" },
-              { title: "Update portfolio case study", progress: 60, time: "30 min" },
-            ].map((t, i) => (
-              <motion.li
-                key={t.title}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.5 + i * 0.05 }}
-                className="group flex items-center gap-4 rounded-xl border border-border/60 bg-background/40 p-3 transition-colors hover:border-primary/40"
-              >
-                <CheckCircle2
-                  className={`h-5 w-5 shrink-0 ${t.progress === 100 ? "text-success" : "text-muted-foreground"}`}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="truncate text-sm font-medium">{t.title}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">{t.time}</span>
+          {upcomingItems.length === 0 ? (
+            <p className="mt-6 text-sm text-muted-foreground">
+              No active roadmap items.{" "}
+              <Link to="/roadmap" className="text-primary hover:underline">
+                Generate your roadmap
+              </Link>{" "}
+              to get started.
+            </p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {upcomingItems.map((t, i) => (
+                <motion.li
+                  key={t.title}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.5 + i * 0.05 }}
+                  className="group flex items-center gap-4 rounded-xl border border-border/60 bg-background/40 p-3 transition-colors hover:border-primary/40"
+                >
+                  <CheckCircle2
+                    className={`h-5 w-5 shrink-0 ${t.progress === 100 ? "text-success" : "text-muted-foreground"}`}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="truncate text-sm font-medium">{t.title}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{t.time}</span>
+                    </div>
+                    <Progress value={t.progress} className="mt-2 h-1.5" />
                   </div>
-                  <Progress value={t.progress} className="mt-2 h-1.5" />
-                </div>
-              </motion.li>
-            ))}
-          </ul>
+                </motion.li>
+              ))}
+            </ul>
+          )}
         </GlassCard>
       </div>
     </AppShell>
