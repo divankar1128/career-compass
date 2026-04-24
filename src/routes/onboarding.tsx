@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { onboardingApi, ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({
@@ -19,7 +21,7 @@ const steps = [
   { title: "What's your role?", key: "role" },
   { title: "Pick your goals", key: "goals" },
   { title: "Where are you headed?", key: "target" },
-];
+] as const;
 
 const roles = ["Engineer", "Designer", "Product Manager", "Data Scientist", "Founder", "Other"];
 const goalChips = ["Switch jobs", "Get promoted", "Salary bump", "Build skills", "Network", "Go remote"];
@@ -27,17 +29,47 @@ const targets = ["FAANG / Big Tech", "High-growth startup", "Remote-first", "Fou
 
 function Onboarding() {
   const navigate = useNavigate();
+  const { refresh, user } = useAuth();
   const [step, setStep] = useState(0);
   const [role, setRole] = useState("Engineer");
+  const [years, setYears] = useState(3);
   const [goals, setGoals] = useState<string[]>(["Switch jobs", "Salary bump"]);
   const [target, setTarget] = useState("High-growth startup");
+  const [skills, setSkills] = useState("React, TypeScript, Node.js");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async () => {
+    setSubmitting(true);
+    try {
+      const skillsArr = skills
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (skillsArr.length === 0) {
+        toast.error("Please add at least one skill");
+        return;
+      }
+      await onboardingApi.submit({
+        currentRole: role,
+        experienceYears: years,
+        targetRole: target,
+        skills: skillsArr,
+        goals,
+      });
+      await refresh();
+      toast.success(`You're all set, ${user?.name?.split(" ")[0] ?? "friend"}!`);
+      navigate({ to: "/dashboard" });
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Could not save onboarding";
+      toast.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const next = () => {
     if (step < steps.length - 1) setStep(step + 1);
-    else {
-      toast.success("You're all set, Alex!");
-      navigate({ to: "/dashboard" });
-    }
+    else void submit();
   };
 
   return (
@@ -92,21 +124,44 @@ function Onboarding() {
 
                 <div className="mt-8">
                   {step === 0 && (
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {roles.map((r) => (
-                        <button
-                          key={r}
-                          onClick={() => setRole(r)}
-                          className={cn(
-                            "rounded-xl border p-4 text-sm font-medium transition-all",
-                            role === r
-                              ? "border-primary bg-primary/10 text-foreground shadow-soft"
-                              : "border-border hover:border-primary/40",
-                          )}
-                        >
-                          {r}
-                        </button>
-                      ))}
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        {roles.map((r) => (
+                          <button
+                            key={r}
+                            type="button"
+                            onClick={() => setRole(r)}
+                            className={cn(
+                              "rounded-xl border p-4 text-sm font-medium transition-all",
+                              role === r
+                                ? "border-primary bg-primary/10 text-foreground shadow-soft"
+                                : "border-border hover:border-primary/40",
+                            )}
+                          >
+                            {r}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="years">Years of experience</Label>
+                        <Input
+                          id="years"
+                          type="number"
+                          min={0}
+                          max={60}
+                          value={years}
+                          onChange={(e) => setYears(Number(e.target.value) || 0)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="skills">Top skills (comma-separated)</Label>
+                        <Input
+                          id="skills"
+                          value={skills}
+                          onChange={(e) => setSkills(e.target.value)}
+                          placeholder="React, TypeScript, Node.js"
+                        />
+                      </div>
                     </div>
                   )}
                   {step === 1 && (
@@ -116,6 +171,7 @@ function Onboarding() {
                         return (
                           <button
                             key={g}
+                            type="button"
                             onClick={() =>
                               setGoals((prev) => (active ? prev.filter((x) => x !== g) : [...prev, g]))
                             }
@@ -138,6 +194,7 @@ function Onboarding() {
                         {targets.map((t) => (
                           <button
                             key={t}
+                            type="button"
                             onClick={() => setTarget(t)}
                             className={cn(
                               "rounded-xl border p-4 text-left text-sm font-medium transition-all",
@@ -150,10 +207,6 @@ function Onboarding() {
                           </button>
                         ))}
                       </div>
-                      <div className="space-y-1.5">
-                        <Label>Target salary (USD)</Label>
-                        <Input placeholder="$180,000" defaultValue="$180,000" />
-                      </div>
                     </div>
                   )}
                 </div>
@@ -164,16 +217,22 @@ function Onboarding() {
               <Button
                 variant="ghost"
                 onClick={() => setStep(Math.max(0, step - 1))}
-                disabled={step === 0}
+                disabled={step === 0 || submitting}
                 className="rounded-full"
               >
                 <ArrowLeft className="mr-2 h-4 w-4" /> Back
               </Button>
               <Button
                 onClick={next}
+                disabled={submitting}
                 className="rounded-full gradient-primary text-primary-foreground shadow-glow"
               >
-                {step === steps.length - 1 ? "Finish" : "Continue"} <ArrowRight className="ml-2 h-4 w-4" />
+                {submitting
+                  ? "Saving..."
+                  : step === steps.length - 1
+                    ? "Finish"
+                    : "Continue"}{" "}
+                <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </div>
           </div>
