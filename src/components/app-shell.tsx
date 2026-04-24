@@ -1,4 +1,4 @@
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -12,6 +12,7 @@ import {
   X,
   Search,
   Bell,
+  LogOut,
 } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -19,6 +20,8 @@ import { ThemeToggle } from "./theme-toggle";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
+import { toast } from "sonner";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -33,6 +36,21 @@ const nav = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const initials = (user?.name ?? "AK")
+    .split(" ")
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  const onLogout = async () => {
+    await logout();
+    toast.success("Signed out");
+    navigate({ to: "/login" });
+  };
 
   return (
     <div className="min-h-screen w-full bg-background text-foreground">
